@@ -5,7 +5,7 @@ import { buildTaskMetadata } from '@/lib/seo'
 import { CATEGORY_OPTIONS, normalizeCategory } from '@/lib/categories'
 import { fetchPaginatedTaskPosts, buildPostUrl } from '@/lib/task-data'
 import { getTaskConfig, SITE_CONFIG, type TaskKey } from '@/lib/site-config'
-import type { SiteFeedPagination, SitePost } from '@/lib/site-connector'
+import { fetchSiteFeed, type SiteFeedPagination, type SitePost } from '@/lib/site-connector'
 import { taskPageMetadata } from '@/config/site.content'
 import { taskPageVoices } from '@/editable/content/task-pages.content'
 import { EditableSiteShell } from '@/editable/shell/EditableSiteShell'
@@ -54,6 +54,70 @@ function pageHref(basePath: string, category: string, page: number) {
   return query ? `${basePath}?${query}` : basePath
 }
 
+const fallbackPagination = (page: number, limit: number, total: number): SiteFeedPagination => {
+  const totalPages = Math.max(1, Math.ceil(total / limit))
+  return {
+    page,
+    limit,
+    total,
+    totalPages,
+    hasPrevPage: page > 1,
+    hasNextPage: page < totalPages,
+  }
+}
+
+async function fetchEditableMediaDistributionPosts({
+  page,
+  limit,
+  category,
+}: {
+  page: number
+  limit: number
+  category: string
+}) {
+  const categoryParam = category === 'all' ? undefined : category
+  const isPublished = (post: SitePost) => {
+    const status = typeof (post as any).status === 'string' ? String((post as any).status).toUpperCase() : ''
+    return !status || status === 'PUBLISHED'
+  }
+  const matchesCategory = (post: SitePost) => {
+    if (!categoryParam) return true
+    const postCategory = getCategory(post, '')
+    return normalizeCategory(postCategory) === categoryParam
+  }
+  const pickPosts = (feedPosts: SitePost[] = []) => feedPosts.filter((post) => isPublished(post) && matchesCategory(post))
+
+  const scopedFeed = await fetchSiteFeed<SitePost>(limit, {
+    task: 'mediaDistribution',
+    category: categoryParam,
+    page,
+    fresh: true,
+    timeoutMs: 5000,
+  }).catch(() => null)
+  let posts = pickPosts(scopedFeed?.posts || [])
+
+  if (!posts.length) {
+    const unscopedFeed = await fetchSiteFeed<SitePost>(limit, {
+      category: categoryParam,
+      page,
+      fresh: true,
+      timeoutMs: 5000,
+    }).catch(() => null)
+    posts = pickPosts(unscopedFeed?.posts || [])
+    if (posts.length) {
+      return {
+        posts,
+        pagination: unscopedFeed?.pagination || fallbackPagination(page, limit, posts.length),
+      }
+    }
+  }
+
+  return {
+    posts,
+    pagination: scopedFeed?.pagination || fallbackPagination(page, limit, posts.length),
+  }
+}
+
 const taskDeck: Record<TaskKey, { icon: typeof FileText; archiveClass: string; promise: string; badge: string }> = {
   mediaDistribution: { icon: Newspaper, archiveClass: 'grid gap-5 md:grid-cols-2 xl:grid-cols-3', promise: 'Newswire cards prioritize source, category, headline, and publication-ready summaries.', badge: 'News' },
   article: { icon: FileText, archiveClass: 'grid gap-5 md:grid-cols-2 xl:grid-cols-3', promise: 'Readable editorial cards with room for headlines and excerpts.', badge: 'Read' },
@@ -78,7 +142,12 @@ export async function EditableTaskArchiveRoute({
   const page = Math.max(1, Math.floor(Number(resolved.page) || 1))
   const category = resolved.category ? normalizeCategory(resolved.category) : 'all'
   const taskConfig = getTaskConfig(task)
-  const { posts, pagination } = await fetchPaginatedTaskPosts(task, { page, limit: 24, category })
+  let { posts, pagination } = await fetchPaginatedTaskPosts(task, { page, limit: 24, category })
+  if (task === 'mediaDistribution' && !posts.length) {
+    const fallback = await fetchEditableMediaDistributionPosts({ page, limit: 24, category })
+    posts = fallback.posts
+    pagination = fallback.pagination
+  }
   return <TaskArchiveView task={task} posts={posts} pagination={pagination} category={category} basePath={basePath || taskConfig?.route || `/${task}`} />
 }
 
@@ -182,112 +251,101 @@ function EditorialArchive({
   label: string
 }) {
   const page = pagination.page || 1
-  const lead = posts[0]
-  const secondary = posts.slice(1, 3)
-  const remaining = posts.slice(3)
+  const visibleCategories = categories.filter((item) => item.slug !== 'all')
+  const recentPosts = posts.slice(0, 5)
+  const pageTitle = category === 'all' ? '' : categoryLabel
 
   return (
     <EditableSiteShell>
-      <main className="min-h-screen bg-[#f7f4ef] text-[#111]">
-        <section className="border-b border-black bg-white">
-          <div className="mx-auto flex max-w-[var(--editable-container)] flex-col gap-6 px-4 py-10 sm:px-6 lg:flex-row lg:items-end lg:justify-between lg:px-8 lg:py-14">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.28em] text-[#c92f2f]">The newsroom</p>
-              <h1 className="editorial-brand mt-3 text-6xl font-black leading-none tracking-[-0.055em] sm:text-7xl lg:text-8xl">
-                {category === 'all' ? label : categoryLabel}
-              </h1>
+      <main className="min-h-screen bg-[#FFF6DE] text-[#2f1d16]">
+        {pageTitle ? (
+          <section className="mx-auto max-w-[1040px] px-4 pb-8">
+            <div className="bg-white px-8 py-3 text-[11px] text-black/45">
+              <Link href="/" className="hover:text-[var(--slot4-accent)]">Home</Link>
+              <span className="mx-3">&gt;</span>
+              <span>{pageTitle}</span>
             </div>
-            <p className="max-w-md border-l-4 border-[#c92f2f] pl-5 text-sm font-bold leading-7 text-black/65">
-              Timely reporting, sharp perspectives, and media-ready stories organized for fast discovery.
-            </p>
-          </div>
-        </section>
-
-        <section className="border-b border-black bg-[#171717] text-white">
-          <div className="mx-auto flex max-w-[var(--editable-container)] gap-7 overflow-x-auto px-4 py-4 text-xs font-black uppercase tracking-[0.16em] sm:px-6 lg:px-8">
-            <Link href={basePath} className={category === 'all' ? 'text-[#f34a43]' : 'hover:text-[#f34a43]'}>Latest</Link>
-            {categories.slice(0, 8).map((item) => (
-              <Link key={item.slug} href={pageHref(basePath, item.slug, 1)} className={category === item.slug ? 'text-[#f34a43]' : 'whitespace-nowrap hover:text-[#f34a43]'}>
-                {item.name}
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        {lead ? (
-          <section className="mx-auto grid max-w-[var(--editable-container)] border-x border-black bg-white lg:grid-cols-[1.75fr_0.75fr]">
-            <Link href={`${basePath}/${lead.slug}`} className="group relative min-h-[34rem] overflow-hidden border-b border-black lg:border-b-0 lg:border-r">
-              <img src={getImage(lead)} alt="" className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black via-black/15 to-transparent" />
-              <div className="absolute inset-x-0 bottom-0 p-6 text-white sm:p-9">
-                <span className="bg-[#c92f2f] px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em]">{getCategory(lead, label)}</span>
-                <h2 className="editorial-serif mt-5 max-w-4xl text-4xl font-black leading-[0.98] tracking-[-0.045em] sm:text-6xl">{lead.title}</h2>
-                <p className="mt-5 max-w-2xl line-clamp-2 text-sm font-semibold leading-7 text-white/80">{getSummary(lead)}</p>
-              </div>
-            </Link>
-            <div className="grid">
-              <div className="border-b border-black bg-[#c92f2f] p-6 text-white">
-                <p className="text-xs font-black uppercase tracking-[0.24em]">Top stories</p>
-                <p className="editorial-serif mt-3 text-3xl font-black leading-tight">What the newsroom is watching now.</p>
-              </div>
-              {secondary.map((post, index) => (
-                <Link key={post.id || post.slug} href={`${basePath}/${post.slug}`} className="group grid grid-cols-[7rem_1fr] border-b border-black bg-white last:border-b-0">
-                  <img src={getImage(post)} alt="" className="h-full min-h-40 w-full object-cover grayscale transition group-hover:grayscale-0" />
-                  <div className="p-5">
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c92f2f]">0{index + 1}</p>
-                    <h3 className="editorial-serif mt-3 text-xl font-black leading-tight">{post.title}</h3>
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <h1 className="mt-7 border-b border-black/20 pb-4 text-center text-4xl font-bold">{pageTitle}</h1>
           </section>
         ) : null}
 
-        <section className="mx-auto max-w-[var(--editable-container)] border-x border-black bg-[#f7f4ef] px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
-          <div className="mb-8 flex flex-wrap items-end justify-between gap-5 border-b-4 border-black pb-4">
-            <h2 className="editorial-brand text-4xl font-black tracking-[-0.04em] sm:text-5xl">More from the desk</h2>
-            <form action={basePath} className="flex border border-black bg-white">
-              <select name="category" defaultValue={category} className="h-11 min-w-44 bg-transparent px-3 text-xs font-black uppercase outline-none">
-                <option value="all">All categories</option>
-                {categories.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}
-              </select>
-              <button className="h-11 bg-black px-5 text-xs font-black uppercase tracking-[0.14em] text-white">Filter</button>
-            </form>
+        <section className="mx-auto grid max-w-[1040px] gap-7 px-4 pb-14 lg:grid-cols-[minmax(0,1fr)_250px]">
+          <div>
+            {posts.length ? (
+              <div className="grid gap-x-10 gap-y-11 md:grid-cols-2">
+                {posts.map((post) => <MarketPostCard key={post.id || post.slug} post={post} basePath={basePath} label={label} />)}
+              </div>
+            ) : (
+              <div className="py-16 text-center">
+                <Search className="mx-auto h-8 w-8 opacity-45" />
+                <h2 className="mt-4 text-3xl font-bold">No posts found</h2>
+                <p className="mt-2 text-sm text-black/55">Try another category or refresh this page after publishing new content.</p>
+              </div>
+            )}
+
+            <div className="mt-16 flex items-center justify-center gap-4 text-sm">
+              {pagination.hasPrevPage ? <Link href={pageHref(basePath, category, page - 1)} className="px-3 py-2 hover:text-[var(--slot4-accent)]">Prev</Link> : null}
+              <span className="bg-[var(--slot4-accent)] px-4 py-3 text-white">{page}</span>
+              {page < (pagination.totalPages || 1) ? <Link href={pageHref(basePath, category, page + 1)} className="px-3 py-2 hover:text-[var(--slot4-accent)]">{page + 1}</Link> : null}
+              {(pagination.totalPages || 1) > page + 1 ? <span>...</span> : null}
+              {(pagination.totalPages || 1) > 1 ? <Link href={pageHref(basePath, category, pagination.totalPages || 1)} className="px-3 py-2 hover:text-[var(--slot4-accent)]">{pagination.totalPages}</Link> : null}
+              {pagination.hasNextPage ? <Link href={pageHref(basePath, category, page + 1)} className="px-3 py-2 hover:text-[var(--slot4-accent)]">Next</Link> : null}
+            </div>
           </div>
 
-          {remaining.length ? (
-            <div className="grid border-l border-t border-black md:grid-cols-2 xl:grid-cols-3">
-              {remaining.map((post, index) => (
-                <Link key={post.id || post.slug} href={`${basePath}/${post.slug}`} className="group border-b border-r border-black bg-white">
-                  <div className="aspect-[16/10] overflow-hidden bg-black">
-                    <img src={getImage(post)} alt="" className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-                  </div>
-                  <div className="p-5">
-                    <div className="flex items-center justify-between gap-4 text-[10px] font-black uppercase tracking-[0.18em] text-[#c92f2f]">
-                      <span>{getCategory(post, label)}</span><span>{String(index + 3).padStart(2, '0')}</span>
-                    </div>
-                    <h3 className="editorial-serif mt-4 text-2xl font-black leading-[1.05]">{post.title}</h3>
-                    <p className="mt-4 line-clamp-3 text-sm leading-6 text-black/60">{getSummary(post)}</p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          ) : !lead ? (
-            <div className="border border-dashed border-black bg-white p-12 text-center">
-              <Search className="mx-auto h-8 w-8" />
-              <h2 className="editorial-serif mt-4 text-3xl font-black">No stories found</h2>
-              <p className="mt-2 text-sm text-black/60">Try another category or publish a new newsroom story.</p>
-            </div>
-          ) : null}
-
-          <div className="mt-10 flex items-center justify-center gap-0">
-            {pagination.hasPrevPage ? <Link href={pageHref(basePath, category, page - 1)} className="border border-black bg-white px-5 py-3 text-xs font-black uppercase">Previous</Link> : null}
-            <span className="border-y border-black bg-[#c92f2f] px-5 py-3 text-xs font-black uppercase text-white">Page {page} / {pagination.totalPages || 1}</span>
-            {pagination.hasNextPage ? <Link href={pageHref(basePath, category, page + 1)} className="border border-black bg-white px-5 py-3 text-xs font-black uppercase">Next</Link> : null}
-          </div>
+          <MarketSidebar recentPosts={recentPosts} categories={visibleCategories} basePath={basePath} />
         </section>
       </main>
     </EditableSiteShell>
+  )
+}
+
+function MarketPostCard({ post, basePath, label }: { post: SitePost; basePath: string; label: string }) {
+  return (
+    <article className="min-w-0">
+      <Link href={`${basePath}/${post.slug}`} className="text-[11px] font-medium uppercase tracking-normal text-[var(--slot4-accent)] hover:text-black">
+        {getCategory(post, label)}
+      </Link>
+      <h2 className="mt-3 text-[23px] font-bold leading-[1.3] text-[#2f1d16]">
+        <Link href={`${basePath}/${post.slug}`} className="hover:text-[var(--slot4-accent)]">{post.title}</Link>
+      </h2>
+      <p className="mt-4 line-clamp-3 text-[15px] leading-[1.65] text-black">{getSummary(post)}</p>
+      <div className="mt-5 flex flex-wrap items-center gap-5 text-[11px] uppercase text-[#7c6b4f]">
+        <span>Asher Jones</span>
+      </div>
+    </article>
+  )
+}
+
+function MarketSidebar({ recentPosts, categories, basePath }: { recentPosts: SitePost[]; categories: { name: string; slug: string }[]; basePath: string }) {
+  return (
+    <aside className="space-y-12">
+      <form action="/search">
+        <label className="text-base">Search</label>
+        <div className="mt-1 flex gap-3">
+          <input name="q" className="h-10 min-w-0 flex-1 border border-black/20 bg-white px-3 outline-none" />
+          <button className="bg-[var(--slot4-accent)] px-5 text-sm font-bold uppercase text-white">Search</button>
+        </div>
+      </form>
+
+      <section>
+        <h2 className="text-[28px] font-bold text-[#2f1d16]">Recent Posts</h2>
+        <div className="mt-5 grid gap-4 text-[16px] leading-[1.6] text-[#7c6b4f]">
+          {recentPosts.map((post) => (
+            <Link key={post.id || post.slug} href={`${basePath}/${post.slug}`} className="hover:text-[var(--slot4-accent)]">{post.title}</Link>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-[28px] font-bold text-[#2f1d16]">Categories</h2>
+        <div className="mt-8 grid gap-y-4 text-[16px] text-[#7c6b4f]">
+          {categories.map((item) => (
+            <Link key={item.slug} href={pageHref(basePath, item.slug, 1)} className="hover:text-[var(--slot4-accent)]">{item.name}</Link>
+          ))}
+        </div>
+      </section>
+    </aside>
   )
 }
 

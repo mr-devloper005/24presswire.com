@@ -15,11 +15,11 @@ export const visualPresets = {
     mood: 'calm magazine authority',
     fontDirection: 'serif headlines with quiet sans body',
     colors: {
-      background: '#f7f4ef',
-      foreground: '#111111',
+      background: '#FFF6DE',
+      foreground: '#2f1d16',
       muted: '#66615b',
-      primary: '#111111',
-      accent: '#c92f2f',
+      primary: '#2f1d16',
+      accent: '#F48F68',
       surface: '#ffffff',
     },
     shape: 'sharp newsroom modules with black rules and red feature bands',
@@ -146,8 +146,8 @@ export const visualSystem = {
     dark: 'border border-white/10 bg-black/30 shadow-[0_24px_70px_rgba(0,0,0,0.25)]',
   },
   layout: {
-    page: 'mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8',
-    sectionY: 'py-12 sm:py-16 lg:py-20',
+    page: 'mx-auto w-full max-w-7xl max-w-[1040px] px-4 sm:px-6 lg:px-8',
+    sectionY: 'py-10 sm:py-14 lg:py-16',
     cardGrid: 'grid gap-5 sm:grid-cols-2 lg:grid-cols-3',
   },
 } as const
