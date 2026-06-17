@@ -5,6 +5,7 @@ import { ArrowLeft, Bookmark, Building2, Camera, CheckCircle2, Download, Externa
 import { buildPostMetadata, buildTaskMetadata } from '@/lib/seo'
 import { buildPostUrl, fetchArticleComments, fetchTaskPostBySlug, fetchTaskPosts } from '@/lib/task-data'
 import { getTaskConfig, SITE_CONFIG, type TaskKey } from '@/lib/site-config'
+import { CATEGORY_OPTIONS } from '@/lib/categories'
 import type { SitePost } from '@/lib/site-connector'
 import { EditableSiteShell } from '@/editable/shell/EditableSiteShell'
 import { getVisualPreset, visualSystem } from '@/editable/theme/visual-system'
@@ -134,38 +135,110 @@ function BackLink({ task }: { task: TaskKey }) {
 
 function ArticleDetail({ task, post, related, comments }: { task: TaskKey; post: SitePost; related: SitePost[]; comments: Array<{ id: string; name: string; comment: string; createdAt: string }> }) {
   const images = getImages(post)
-  const published = post.publishedAt ? new Date(post.publishedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : ''
+  const taskConfig = getTaskConfig(task)
+  const postUrl = `${SITE_CONFIG.baseUrl.replace(/\/$/, '')}${buildPostUrl(task, post.slug)}`
+  const encodedUrl = encodeURIComponent(postUrl)
+  const encodedTitle = encodeURIComponent(post.title)
+  const shareLinks = [
+    { label: 'Twitter', short: 't', color: '#2da2ef', href: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}` },
+    { label: 'Facebook', short: 'f', color: '#3c5598', href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
+    { label: 'LinkedIn', short: 'in', color: '#1078b7', href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}` },
+    { label: 'Email', short: 'm', color: '#4d80eb', href: `mailto:?subject=${encodedTitle}&body=${encodeURIComponent(`${post.title}\n\n${postUrl}`)}` },
+  ]
   return (
-    <section className="bg-[#f7f4ef]">
-      <header className="border-b border-black/20">
-        <div className="mx-auto max-w-[1180px] px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
-          <BackLink task={task} />
-          <div className="mt-10 flex flex-wrap items-center justify-between gap-3 border-t-4 border-black pt-4 text-[11px] font-black uppercase tracking-[0.16em]">
-            <span className="text-[#c92f2f]">{categoryOf(post, 'News')}</span>
-            {published ? <time>{published}</time> : null}
-          </div>
-          <h1 className="editorial-serif mt-6 max-w-6xl text-5xl font-black leading-[0.94] tracking-[-0.055em] sm:text-6xl lg:text-[5.5rem]">{post.title}</h1>
-          {summaryText(post) ? <p className="mt-6 max-w-4xl text-xl font-bold leading-8 text-black/68 sm:text-2xl">{summaryText(post)}</p> : null}
+    <section className="bg-[#FFF6DE] text-[#2f1d16]">
+      <div className="mx-auto max-w-[1040px] px-4 pb-6">
+        <div className="bg-white px-8 py-3 text-[11px] text-black/45">
+          <Link href="/" className="hover:text-[var(--slot4-accent)]">Home</Link>
+          <span className="mx-3">&gt;</span>
+          <Link href={taskConfig?.route || '/'} className="hover:text-[var(--slot4-accent)]">{categoryOf(post, 'News')}</Link>
+          <span className="mx-3">&gt;</span>
+          <span className="line-clamp-1 inline-block max-w-[65vw] align-bottom">{post.title}</span>
+        </div>
+      </div>
+
+      <header className="mx-auto max-w-[820px] px-4 pb-8 pt-2 text-center">
+        <p className="text-[11px] font-medium uppercase text-[var(--slot4-accent)]">{categoryOf(post, 'Vehement Finance News Network')}</p>
+        <h1 className="mt-4 text-[34px] font-bold leading-[1.28] sm:text-[40px]">{post.title}</h1>
+        <div className="mt-6 flex justify-center gap-5 text-[11px] uppercase text-[#7c6b4f]">
+          <span>Asher Jones</span>
         </div>
       </header>
 
-      {images[0] ? (
-        <figure className="mx-auto max-w-[1320px] border-x border-b border-black/15 bg-white">
-          <img src={images[0]} alt="" className="max-h-[760px] w-full object-cover" />
-          <figcaption className="border-t border-black/15 px-4 py-3 text-xs italic text-black/55 sm:px-6">Featured image for {post.title}</figcaption>
-        </figure>
-      ) : null}
-
-      <div className="mx-auto grid max-w-[1180px] gap-12 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,760px)_300px] lg:px-8 lg:py-16">
-        <article className="min-w-0 border-t-4 border-black pt-8">
-          <BodyContent post={post} />
-          <EditableComments slug={post.slug} comments={comments} />
-        </article>
-        <div className="border-t-4 border-[#c92f2f] pt-5">
-          <RelatedPanel task={task} post={post} related={related} />
+      <div className="mx-auto grid max-w-[1040px] gap-7 px-4 pb-14 lg:grid-cols-[minmax(0,1fr)_250px]">
+        <div className="grid gap-8 lg:grid-cols-[56px_minmax(0,700px)]">
+          <div className="hidden pt-5 lg:block">
+            <div className="sticky top-5 grid w-[45px] gap-[5px]">
+              {shareLinks.map((item) => (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  aria-label={`Share on ${item.label}`}
+                  className="flex h-[45px] items-center justify-center text-sm font-bold text-white"
+                  rel={item.href.startsWith('mailto:') ? undefined : 'noopener noreferrer'}
+                  style={{ backgroundColor: item.color }}
+                  target={item.href.startsWith('mailto:') ? undefined : '_blank'}
+                >
+                  {item.short}
+                </a>
+              ))}
+            </div>
+          </div>
+          <article className="min-w-0 text-black">
+            {summaryText(post) ? <p className="mb-8 text-[16px] font-bold leading-[1.6]">{summaryText(post)}</p> : null}
+            <BodyContent post={post} />
+            {images.length ? (
+              <div className="mt-12 grid gap-12">
+                {images.slice(0, 3).map((image, index) => (
+                  <figure key={`${image}-${index}`} className="text-center">
+                    <img src={image} alt="" className="mx-auto max-h-[610px] max-w-full object-contain" />
+                    {index === 0 ? <figcaption className="mt-5 text-[16px]">Caption: {post.title}</figcaption> : null}
+                  </figure>
+                ))}
+              </div>
+            ) : null}
+            <div className="mt-14 border border-black/75 bg-white p-5 text-[16px] leading-7">
+              <p className="font-medium">Post Disclaimer</p>
+              <p className="mt-1">The information contained in this post is for general information purposes only. The information is provided by {post.title} and while we endeavour to keep the information up to date and correct, we make no representations or warranties of any kind.</p>
+            </div>
+            <EditableComments slug={post.slug} comments={comments} />
+          </article>
         </div>
+        <ArticleMarketSidebar task={task} related={related} current={post} />
       </div>
     </section>
+  )
+}
+
+function ArticleMarketSidebar({ task, related, current }: { task: TaskKey; related: SitePost[]; current: SitePost }) {
+  const taskConfig = getTaskConfig(task)
+  const posts = related.length ? related : [current]
+  return (
+    <aside className="space-y-12">
+      <form action="/search">
+        <label className="text-base">Search</label>
+        <div className="mt-1 flex gap-3">
+          <input name="q" className="h-10 min-w-0 flex-1 border border-black/20 bg-white px-3 outline-none" />
+          <button className="bg-[var(--slot4-accent)] px-5 text-sm font-bold uppercase text-white">Search</button>
+        </div>
+      </form>
+      <section>
+        <h2 className="text-[28px] font-bold text-[#2f1d16]">Recent Posts</h2>
+        <div className="mt-5 grid gap-4 text-[16px] leading-[1.6] text-[#7c6b4f]">
+          {posts.slice(0, 5).map((post) => (
+            <Link key={post.id || post.slug} href={buildPostUrl(task, post.slug)} className="hover:text-[var(--slot4-accent)]">{post.title}</Link>
+          ))}
+        </div>
+      </section>
+      <section>
+        <h2 className="text-[28px] font-bold text-[#2f1d16]">Categories</h2>
+        <div className="mt-8 grid gap-y-4 text-[16px] text-[#7c6b4f]">
+          {CATEGORY_OPTIONS.map((item) => (
+            <Link key={item.slug} href={`${taskConfig?.route || '/'}?category=${item.slug}`} className="hover:text-[var(--slot4-accent)]">{item.name}</Link>
+          ))}
+        </div>
+      </section>
+    </aside>
   )
 }
 
@@ -405,7 +478,6 @@ function RelatedPanel({ task, post, related, compact = false }: { task: TaskKey;
           <div className="mt-4 grid gap-3 text-sm font-bold opacity-75">
             <p className="inline-flex items-center gap-2"><Tag className="h-4 w-4" /> Task: {taskConfig?.label || task}</p>
             <p className="inline-flex items-center gap-2"><CheckCircle2 className="h-4 w-4" /> Site: {SITE_CONFIG.name}</p>
-            {post.publishedAt ? <p>Published: {new Date(post.publishedAt).toLocaleDateString()}</p> : null}
           </div>
         </div>
       ) : null}
@@ -427,7 +499,7 @@ function RelatedPanel({ task, post, related, compact = false }: { task: TaskKey;
 function RelatedCard({ task, post }: { task: TaskKey; post: SitePost }) {
   const image = getImages(post)[0]
   return (
-    <Link href={buildPostUrl(task, post.slug)} className="group flex gap-3 border-t border-black/15 py-3 transition hover:text-[#c92f2f]">
+    <Link href={buildPostUrl(task, post.slug)} className="group flex gap-3 border-t border-black/15 py-3 transition hover:text-[#F48F68]">
       {image && task !== 'sbm' ? <img src={image} alt="" className="h-20 w-20 shrink-0 object-cover" /> : <div className="flex h-20 w-20 shrink-0 items-center justify-center bg-black text-white"><FileText className="h-6 w-6" /></div>}
       <div className="min-w-0">
         <h3 className="line-clamp-3 text-sm font-black leading-tight tracking-[-0.03em]">{post.title}</h3>
